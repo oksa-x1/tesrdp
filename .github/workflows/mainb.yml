@@ -1,0 +1,71 @@
+name: Windows-RDP-Full-Software
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 1. Konfigurasi User & Remote Desktop
+        run: |
+          # Aktifkan RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Buat User RDP (Tanpa -Force agar tidak error)
+          $password = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
+          if (!(Get-LocalUser -Name "RDPUser" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "RDPUser" -Password $password -FullName "Remote User"
+              Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
+          }
+
+      - name: 2. Install Ubuntu 22.04 LTS (Microsoft Store Appx)
+        run: |
+          Write-Host "Mengunduh Paket Ubuntu 22.04 dari Server Microsoft..."
+          Invoke-WebRequest -Uri https://aka.ms/wslubuntu2204 -OutFile Ubuntu22.appx -UseBasicParsing
+          
+          Write-Host "Mengekstrak dan Registrasi Distro..."
+          Rename-Item .\Ubuntu22.appx .\Ubuntu22.zip
+          Expand-Archive .\Ubuntu22.zip -DestinationPath C:\Ubuntu22
+          
+          # Registrasi WSL (Install secara silent)
+          cd C:\Ubuntu22
+          # Cari file exe installer di dalam folder hasil ekstrak
+          $installer = Get-ChildItem -Filter "ubuntu*.exe" | Select-Object -First 1
+          if ($installer) {
+              Write-Host "Menjalankan installer: $($installer.Name)"
+              Start-Process ".\$($installer.Name)" -ArgumentList "install --root" -Wait
+          }
+          
+          # Set default WSL ke versi 2
+          wsl --set-default-version 2
+
+      - name: 3. Install VS Code & Zoom (Windows Apps)
+        run: |
+          Write-Host "Instalasi software Windows sedang berjalan..."
+          choco install vscode zoom -y --no-progress
+
+      - name: 4. Aktivasi Tunnel & Monitoring
+        run: |
+          # Download Bore untuk Tunneling
+          Invoke-WebRequest -Uri https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath .
+          
+          # Jalankan Tunnel RDP
+          Start-Process ./bore.exe -ArgumentList "local 3389 --to bore.pub" -NoNewWindow
+          
+          Write-Host "=========================================="
+          Write-Host "RDP SIAP!"
+          Write-Host "Cari alamat 'bore.pub:XXXXX' di log di bawah"
+          Write-Host "Username: RDPUser"
+          Write-Host "Password: P@ssw0rd123!"
+          Write-Host "=========================================="
+          
+          # Menjaga Runner tetap hidup (6 Jam)
+          $i = 0
+          while($i -lt 360) {
+            Write-Host "[$(Get-Date)] Runner tetap aktif... ($i/360 menit)"
+            Start-Sleep -Seconds 60
+            $i++
+          }
