@@ -1,0 +1,56 @@
+name: Windows-RDP-Ubuntu-WSL
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 1. Konfigurasi User & RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          $password = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
+          New-LocalUser -Name "RDPUser" -Password $password -Force
+          Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
+
+      - name: 2. Install WSL & Ubuntu
+        run: |
+          # Aktifkan fitur WSL dan Virtual Machine Platform
+          dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+          dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+          
+          # Download dan Install Ubuntu secara manual agar tidak butuh restart penuh
+          Write-Host "Downloading Ubuntu..."
+          Invoke-WebRequest -Uri https://aka.ms/wslubuntu2004 -OutFile Ubuntu.appx -UseBasicParsing
+          Rename-Item .\Ubuntu.appx .\Ubuntu.zip
+          Expand-Archive .\Ubuntu.zip -DestinationPath .\Ubuntu
+          
+          # Registrasi WSL (Ubuntu akan terinstall di background)
+          Write-Host "Installing Ubuntu..."
+          Start-Process -FilePath ".\Ubuntu\ubuntu2004.exe" -ArgumentList "install --root" -WindowStyle Hidden
+          
+      - name: 3. Install VS Code & Zoom (Chocolatey)
+        run: |
+          choco install vscode zoom -y --no-progress
+
+      - name: 4. Jalankan Bore Tunnel
+        run: |
+          Invoke-WebRequest -Uri https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath .
+          
+          Start-Process ./bore.exe -ArgumentList "local 3389 --to bore.pub" -NoNewWindow
+          
+          Write-Host "=========================================="
+          Write-Host "RDP SIAP!"
+          Write-Host "Host: bore.pub | Port: Cek log di bawah"
+          Write-Host "User: RDPUser | Pass: P@ssw0rd123!"
+          Write-Host "=========================================="
+          
+          $i = 0
+          while($i -lt 360) {
+            Write-Host "[$(Get-Date)] Runner Active..."
+            Start-Sleep -Seconds 60
+            $i++
+          }
