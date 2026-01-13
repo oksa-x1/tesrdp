@@ -1,0 +1,46 @@
+name: Windows-RDP-Fixed
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 1. Konfigurasi User & RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          $password = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
+          # Perbaikan: Hapus -Force di sini
+          if (!(Get-LocalUser -Name "RDPUser" -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name "RDPUser" -Password $password
+            Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
+          }
+
+      - name: 2. Install Ubuntu (WSL), VS Code, Zoom
+        run: |
+          # Install Software via Choco
+          choco install vscode zoom -y --no-progress
+          
+          # Install WSL Dasar
+          dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+
+      - name: 3. Jalankan Bore Tunnel
+        run: |
+          Invoke-WebRequest -Uri https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath .
+          Start-Process ./bore.exe -ArgumentList "local 3389 --to bore.pub" -NoNewWindow
+          
+          Write-Host "=============================="
+          Write-Host "USER: RDPUser"
+          Write-Host "PASS: P@ssw0rd123!"
+          Write-Host "Cek port bore.pub di bawah..."
+          Write-Host "=============================="
+          
+          $i = 0
+          while($i -lt 360) {
+            Write-Host "[$(Get-Date)] Runner Active..."
+            Start-Sleep -Seconds 60
+            $i++
+          }
