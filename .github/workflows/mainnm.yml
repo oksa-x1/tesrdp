@@ -1,0 +1,71 @@
+name: Windows-RDP-Ubuntu-Fixed
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 1. Konfigurasi User & Remote Desktop
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          $password = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
+          if (!(Get-LocalUser -Name "RDPUser" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "RDPUser" -Password $password -FullName "Remote User"
+              Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
+          }
+
+      - name: 2. Install Ubuntu (Fix Double Extraction)
+        run: |
+          Write-Host "Mengunduh Ubuntu Bundle..."
+          Invoke-WebRequest -Uri https://aka.ms/wslubuntu2004 -OutFile UbuntuBundle.zip -UseBasicParsing
+          
+          Write-Host "Ekstraksi Tahap 1 (Bundle)..."
+          Expand-Archive .\UbuntuBundle.zip -DestinationPath C:\UbuntuTemp -Force
+          
+          # Mencari file .appx untuk x64 di dalam bundle
+          $innerAppx = Get-ChildItem -Path "C:\UbuntuTemp" -Filter "*x64.appx" | Select-Object -First 1
+          
+          Write-Host "Ekstraksi Tahap 2 (Distro Content)..."
+          # Appx sebenarnya adalah zip, kita ekstrak lagi untuk mendapatkan .exe
+          Expand-Archive $innerAppx.FullName -DestinationPath C:\UbuntuDistro -Force
+          
+          # Mencari file .exe installer
+          $exePath = Get-ChildItem -Path "C:\UbuntuDistro" -Filter "ubuntu*.exe" | Select-Object -First 1
+          
+          if ($exePath) {
+              Write-Host "Installer ditemukan: $($exePath.FullName)"
+              Set-Location -Path "C:\UbuntuDistro"
+              # Menjalankan instalasi root
+              Start-Process -FilePath ".\$($exePath.Name)" -ArgumentList "install --root" -Wait
+              Write-Host "Ubuntu Berhasil Terdaftar!"
+          } else {
+              Write-Error "Gagal menemukan ubuntu.exe setelah ekstraksi kedua."
+              exit 1
+          }
+
+      - name: 3. Install VS Code & Zoom
+        run: |
+          choco install vscode zoom -y --no-progress
+
+      - name: 4. Aktivasi Tunnel & Monitoring
+        run: |
+          Invoke-WebRequest -Uri https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+          Expand-Archive bore.zip -DestinationPath . -Force
+          
+          Start-Process ./bore.exe -ArgumentList "local 3389 --to bore.pub" -NoNewWindow
+          
+          Write-Host "=========================================="
+          Write-Host "RDP SIAP!"
+          Write-Host "Cek alamat 'bore.pub:XXXXX' di log di bawah"
+          Write-Host "User: RDPUser | Pass: P@ssw0rd123!"
+          Write-Host "=========================================="
+          
+          $i = 0
+          while($i -lt 360) {
+            Write-Host "[$(Get-Date)] Runner Active..."
+            Start-Sleep -Seconds 60
+            $i++
+          }
