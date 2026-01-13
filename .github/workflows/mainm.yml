@@ -1,4 +1,4 @@
-name: Windows-RDP-Ubuntu-Fullx
+name: Windows-RDP-Final-Fix
 
 on: 
   workflow_dispatch:
@@ -7,58 +7,55 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: 1. Konfigurasi User & RDP
+      - name: 1. Konfigurasi User & Remote Desktop
         run: |
-          # Aktifkan Remote Desktop
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          
-          # Buat User baru (Fix Error: Tanpa -Force)
           $password = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
           if (!(Get-LocalUser -Name "RDPUser" -ErrorAction SilentlyContinue)) {
               New-LocalUser -Name "RDPUser" -Password $password -FullName "Remote User"
               Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
-              Write-Host "User RDPUser berhasil dibuat."
           }
 
-      - name: 2. Install Ubuntu (WSL) Secara Otomatis
+      - name: 2. Install Ubuntu (Auto-Path Fix)
         run: |
-          Write-Host "Mengunduh Ubuntu 20.04..."
-          Invoke-WebRequest -Uri https://aka.ms/wslubuntu2004 -OutFile Ubuntu.appx -UseBasicParsing
+          Write-Host "Mengunduh Ubuntu..."
+          Invoke-WebRequest -Uri https://aka.ms/wslubuntu2004 -OutFile Ubuntu.zip -UseBasicParsing
           
-          Write-Host "Mengekstrak dan Registrasi Ubuntu..."
-          Rename-Item .\Ubuntu.appx .\Ubuntu.zip
-          Expand-Archive .\Ubuntu.zip -DestinationPath C:\UbuntuDistro
+          Write-Host "Mengekstrak file..."
+          Expand-Archive .\Ubuntu.zip -DestinationPath C:\UbuntuDistro -Force
           
-          # Menjalankan instalasi root secara background agar siap pakai
-          cd C:\UbuntuDistro
-          Start-Process .\ubuntu2004.exe -ArgumentList "install --root" -Wait
+          # Mencari file .exe secara rekursif karena lokasi bisa berbeda-beda
+          $exePath = Get-ChildItem -Path "C:\UbuntuDistro" -Filter "ubuntu*.exe" -Recurse | Select-Object -First 1
           
-          Write-Host "Daftar Distro Terpasang:"
-          wsl --list --verbose
+          if ($exePath) {
+              Write-Host "File ditemukan di: $($exePath.FullName)"
+              # Berpindah ke direktori file tersebut agar instalasi lancar
+              Set-Location -Path $exePath.DirectoryName
+              Start-Process -FilePath $exePath.FullName -ArgumentList "install --root" -Wait
+              Write-Host "Registrasi Ubuntu Selesai."
+          } else {
+              Write-Error "Gagal menemukan file installer ubuntu.exe!"
+              exit 1
+          }
 
-      - name: 3. Install Software (VS Code & Zoom)
+      - name: 3. Install VS Code & Zoom
         run: |
-          Write-Host "Menginstal VS Code dan Zoom via Chocolatey..."
           choco install vscode zoom -y --no-progress
 
-      - name: 4. Jalankan Bore Tunnel
+      - name: 4. Aktivasi Tunnel & Monitoring
         run: |
-          # Download Bore CLI
           Invoke-WebRequest -Uri https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip -OutFile bore.zip
-          Expand-Archive bore.zip -DestinationPath .
+          Expand-Archive bore.zip -DestinationPath . -Force
           
-          # Jalankan Tunnel ke port RDP (3389)
           Start-Process ./bore.exe -ArgumentList "local 3389 --to bore.pub" -NoNewWindow
           
           Write-Host "=========================================="
-          Write-Host "RDP SIAP DIGUNAKAN!"
-          Write-Host "Cari baris 'listening at bore.pub:XXXXX' di log"
-          Write-Host "Username: RDPUser"
-          Write-Host "Password: P@ssw0rd123!"
+          Write-Host "RDP SIAP!"
+          Write-Host "Cek alamat 'bore.pub:XXXXX' di log di bawah"
+          Write-Host "User: RDPUser | Pass: P@ssw0rd123!"
           Write-Host "=========================================="
           
-          # Loop agar runner tetap menyala selama 6 jam
           $i = 0
           while($i -lt 360) {
             Write-Host "[$(Get-Date)] Runner Active..."
