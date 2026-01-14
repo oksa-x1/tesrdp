@@ -1,0 +1,51 @@
+name: Ubuntu-Bore-Remote-Tools
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Update & Install Desktop Environment
+        run: |
+          sudo apt update
+          # Install XFCE (Ringan) dan XRDP agar bisa di-remote
+          sudo apt install -y xfce4 xfce4-goodies xrdp
+          # Set user password untuk login
+          echo "runneradmin:P@ssw0rd123!" | sudo chpasswd
+          # Konfigurasi agar XRDP menggunakan XFCE
+          echo "xfce4-session" > ~/.xsession
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+
+      - name: 2. Install VS Code & Zoom (Linux Version)
+        run: |
+          # Install VS Code via Snap
+          sudo snap install --classic code
+          # Install Zoom via Debian Package
+          wget https://zoom.us/client/latest/zoom_amd64.deb
+          sudo apt --fix-broken install -y ./zoom_amd64.deb
+
+      - name: 3. Install & Jalankan Bore Tunnel
+        run: |
+          # Download Bore versi Linux
+          wget https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          chmod +x bore
+          
+          # Jalankan tunnel untuk port 3389 (RDP)
+          ./bore local 3389 --to bore.pub > bore.log 2>&1 &
+          
+          sleep 5
+          echo "=========================================="
+          grep -o "bore.pub:[0-9]*" bore.log || echo "Gagal mendapatkan port bore"
+          echo "User: runneradmin | Pass: P@ssw0rd123!"
+          echo "Gunakan Aplikasi 'Remote Desktop Connection' (MSTSC)"
+          echo "=========================================="
+          
+          # Keep alive selama 6 jam
+          for i in {1..360}; do
+            echo "[$(date)] Runner Ubuntu Active..."
+            sleep 60
+          done
