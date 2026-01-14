@@ -1,0 +1,64 @@
+name: Ubuntu-Bore-Remote-Desktop
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Update & Install Desktop (XFCE)
+        run: |
+          sudo apt update
+          # Mengatur agar instalasi tidak meminta input manual (non-interactive)
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt install -y xfce4 xfce4-goodies xrdp
+          
+          # Mengatur password untuk user 'runner'
+          echo "runner:P@ssw0rd123!" | sudo chpasswd
+          
+          # Konfigurasi agar XRDP menjalankan XFCE
+          echo "xfce4-session" > /home/runner/.xsession
+          sudo chown runner:runner /home/runner/.xsession
+          
+          # Restart service XRDP
+          sudo systemctl enable xrdp
+          sudo systemctl restart xrdp
+
+      - name: 2. Install VS Code & Zoom
+        run: |
+          # Install VS Code (via Snap lebih cepat di GitHub Runner)
+          sudo snap install --classic code
+          
+          # Install Zoom
+          wget -q https://zoom.us/client/latest/zoom_amd64.deb
+          sudo apt update
+          sudo apt --fix-broken install -y ./zoom_amd64.deb
+          rm zoom_amd64.deb
+
+      - name: 3. Setup & Run Bore Tunnel
+        run: |
+          # Download Bore khusus versi Linux
+          wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          chmod +x bore
+          
+          # Jalankan tunnel untuk port RDP (3389)
+          ./bore local 3389 --to bore.pub > bore.log 2>&1 &
+          
+          # Tunggu sebentar agar bore mendapatkan port
+          sleep 10
+          
+          echo "===================================================="
+          echo "ALAMAT RDP (LIHAT DI BAWAH):"
+          grep -o "bore.pub:[0-9]*" bore.log || echo "Sedang mencoba mendapatkan alamat..."
+          echo ""
+          echo "User: runner"
+          echo "Pass: P@ssw0rd123!"
+          echo "===================================================="
+          
+          # Menjaga agar workflow tetap berjalan (6 jam)
+          for i in {1..360}; do
+            echo "[$(date)] Runner Ubuntu masih aktif..."
+            sleep 60
+          done
